@@ -1,12 +1,15 @@
 package client;
 
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import model.Message;
+import model.Question;
 
 import javax.swing.*;
 import java.awt.*;
 import java.io.BufferedReader;
 import java.io.PrintWriter;
+import java.util.List;
 
 public class RoomFrame extends JFrame {
     private String nickname;
@@ -15,7 +18,7 @@ public class RoomFrame extends JFrame {
     private PrintWriter out;
     private BufferedReader in;
     private Gson gson = new Gson();
-    private boolean isListening = true;
+    private volatile boolean isListening = true;
 
     private JLabel lblRoomInfo, lblHostStatus, lblGuestStatus;
     private JButton btnAction, btnLeaveRoom;
@@ -73,6 +76,7 @@ public class RoomFrame extends JFrame {
         });
 
         btnLeaveRoom.addActionListener(e -> {
+            isListening = false;
             out.println(gson.toJson(new Message("LEAVE_ROOM", nickname, "", roomId)));
             returnToLobby();
         });
@@ -88,22 +92,39 @@ public class RoomFrame extends JFrame {
                     Message msg = gson.fromJson(response, Message.class);
                     String action = msg.getAction();
 
-                    SwingUtilities.invokeLater(() -> {
-                        if ("GUEST_JOINED".equals(action)) {
-                            lblGuestStatus.setText("Khách: " + msg.getNickname() + " [CHƯA SẴN SÀNG]");
-                        } else if ("GUEST_READY".equals(action)) {
-                            lblGuestStatus.setText(lblGuestStatus.getText().replace("[CHƯA SẴN SÀNG]", "[ĐÃ SẴN SÀNG]"));
-                            if (isHost) btnAction.setEnabled(true);
-                        } else if ("GUEST_LEFT".equals(action)) {
-                            lblGuestStatus.setText("Khách: (Đang chờ...)");
-                            if (isHost) btnAction.setEnabled(false);
-                        } else if ("HOST_LEFT".equals(action)) {
+                    if ("GAME_STARTED".equals(action)) {
+                        isListening = false;
+                        java.lang.reflect.Type listType = new TypeToken<List<Question>>(){}.getType();
+                        List<Question> questions = gson.fromJson(msg.getContent(), listType);
+
+                        SwingUtilities.invokeLater(() -> {
+                            GameFrame gameFrame = new GameFrame(nickname, roomId, questions, out, in, getLocation());
+                            gameFrame.setVisible(true);
+                            this.dispose();
+                        });
+                        break; // Ngắt luồng đọc của RoomFrame lập tức để nhường Stream cho GameFrame
+                    } 
+                    else if ("HOST_LEFT".equals(action)) {
+                        isListening = false;
+                        SwingUtilities.invokeLater(() -> {
                             JOptionPane.showMessageDialog(this, "Chủ phòng đã giải tán phòng!");
                             returnToLobby();
-                        } else if ("GAME_STARTED".equals(action)) {
-                            JOptionPane.showMessageDialog(this, "TRẬN ĐẤU BẮT ĐẦU!");
-                        }
-                    });
+                        });
+                        break;
+                    } 
+                    else {
+                        SwingUtilities.invokeLater(() -> {
+                            if ("GUEST_JOINED".equals(action)) {
+                                lblGuestStatus.setText("Khách: " + msg.getNickname() + " [CHƯA SẴN SÀNG]");
+                            } else if ("GUEST_READY".equals(action)) {
+                                lblGuestStatus.setText("Khách: " + msg.getNickname() + " [ĐÃ SẴN SÀNG]");
+                                if (isHost) btnAction.setEnabled(true);
+                            } else if ("GUEST_LEFT".equals(action)) {
+                                lblGuestStatus.setText("Khách: (Đang chờ...)");
+                                if (isHost) btnAction.setEnabled(false);
+                            }
+                        });
+                    }
                 }
             } catch (Exception e) {
                 System.out.println("Thoát luồng RoomFrame");

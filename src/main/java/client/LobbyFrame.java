@@ -19,7 +19,7 @@ public class LobbyFrame extends JFrame {
     private PrintWriter out;
     private BufferedReader in;
     private Gson gson = new Gson();
-    private boolean isListening = true;
+    private volatile boolean isListening = true;
 
     private JTable roomTable;
     private DefaultTableModel tableModel;
@@ -100,31 +100,40 @@ public class LobbyFrame extends JFrame {
                     Message msg = gson.fromJson(response, Message.class);
                     String action = msg.getAction();
 
-                    SwingUtilities.invokeLater(() -> {
-                        if ("ROOM_LIST_RESPONSE".equals(action)) {
+                    if ("CREATE_ROOM_SUCCESS".equals(action)) {
+                        isListening = false;
+                        SwingUtilities.invokeLater(() -> {
+                            RoomFrame roomFrame = new RoomFrame(nickname, msg.getRoomId(), true, "", out, in, getLocation());
+                            roomFrame.setVisible(true);
+                            this.dispose();
+                        });
+                        break; // Ngắt luồng đọc của Lobby lập tức
+                    } 
+                    else if ("JOIN_ROOM_SUCCESS".equals(action)) {
+                        isListening = false;
+                        SwingUtilities.invokeLater(() -> {
+                            RoomFrame roomFrame = new RoomFrame(nickname, msg.getRoomId(), false, msg.getContent(), out, in, getLocation());
+                            roomFrame.setVisible(true);
+                            this.dispose();
+                        });
+                        break; // Ngắt luồng đọc của Lobby lập tức
+                    } 
+                    else if ("ROOM_LIST_RESPONSE".equals(action)) {
+                        SwingUtilities.invokeLater(() -> {
                             tableModel.setRowCount(0);
                             java.lang.reflect.Type listType = new TypeToken<List<Room>>(){}.getType();
                             List<Room> rooms = gson.fromJson(msg.getContent(), listType);
                             for (Room r : rooms) {
                                 tableModel.addRow(new Object[]{r.getRoomId(), r.getHostNickname(), r.getPlayerCount(), r.getStatus()});
                             }
-                        } else if ("CREATE_ROOM_SUCCESS".equals(action)) {
-                            isListening = false; // Ngừng lắng nghe ở Lobby để nhường Stream cho RoomFrame
-                            RoomFrame roomFrame = new RoomFrame(nickname, msg.getRoomId(), true, "", out, in, getLocation());
-                            roomFrame.setVisible(true);
-                            this.dispose();
-                        } else if ("JOIN_ROOM_SUCCESS".equals(action)) {
-                            isListening = false;
-                            RoomFrame roomFrame = new RoomFrame(nickname, msg.getRoomId(), false, msg.getContent(), out, in, getLocation());
-                            roomFrame.setVisible(true);
-                            this.dispose();
-                        } else if ("JOIN_ROOM_FAIL".equals(action)) {
-                            JOptionPane.showMessageDialog(this, msg.getContent());
-                        }
-                    });
+                        });
+                    } 
+                    else if ("JOIN_ROOM_FAIL".equals(action)) {
+                        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, msg.getContent()));
+                    }
                 }
             } catch (Exception e) {
-                System.out.println("Đã thoát luồng đọc Lobby.");
+                System.out.println("Thoát luồng đọc Lobby.");
             }
         }).start();
     }

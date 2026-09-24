@@ -20,6 +20,9 @@ public class ClientHandler implements Runnable {
     }
 
     public String getCurrentRoomId() { return currentRoomId; }
+    
+    // Bổ sung thuộc tính lấy Nickname
+    public String getNickname() { return currentNickname; }
 
     public void sendMessage(Message msg) {
         out.println(gson.toJson(msg));
@@ -40,7 +43,7 @@ public class ClientHandler implements Runnable {
 
                 if ("JOIN_LOBBY".equals(action)) {
                     String nameInput = msg.getNickname();
-                    // Kiếm tra trùng tên
+                    // Kiểm tra trùng tên
                     if (ServerManager.onlineUsers.containsKey(nameInput)) {
                         sendMessage(new Message("JOIN_LOBBY_FAIL", nameInput, "Nickname đã có người sử dụng!"));
                     } else {
@@ -94,13 +97,23 @@ public class ClientHandler implements Runnable {
                     Room room = RoomManager.rooms.get(currentRoomId);
                     if (room != null && room.isGuestReady()) {
                         room.setStatus("PLAYING");
-                        Message startMsg = new Message("GAME_STARTED", "", "Bắt đầu!", currentRoomId);
-                        sendMessage(startMsg);
                         
+                        ClientHandler hostHandler = ServerManager.onlineUsers.get(room.getHostNickname());
                         ClientHandler guestHandler = ServerManager.onlineUsers.get(room.getGuestNickname());
-                        if (guestHandler != null) guestHandler.sendMessage(startMsg);
                         
+                        // Khởi tạo trận đấu và khởi chạy Thread GameMatch
+                        GameMatch match = new GameMatch(currentRoomId, hostHandler, guestHandler);
+                        RoomManager.matches.put(currentRoomId, match);
+                        new Thread(match).start();
+
                         ServerManager.broadcastRoomList();
+                    }
+                }
+                else if ("UPDATE_SCORE".equals(action)) {
+                    GameMatch match = RoomManager.matches.get(currentRoomId);
+                    if (match != null) {
+                        boolean finished = "FINISHED".equals(msg.getContent());
+                        match.updateScore(currentNickname, msg.getScore(), finished);
                     }
                 }
             }
@@ -137,5 +150,5 @@ public class ClientHandler implements Runnable {
             this.currentRoomId = null;
             ServerManager.broadcastRoomList(); // Thông báo phòng đã trống/hủy
         }
-    }
+    }   
 }

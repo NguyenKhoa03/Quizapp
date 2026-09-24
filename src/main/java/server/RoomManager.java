@@ -6,6 +6,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class RoomManager {
     public static ConcurrentHashMap<String, Room> rooms = new ConcurrentHashMap<>();
+    public static ConcurrentHashMap<String, GameMatch> matches = new ConcurrentHashMap<>();
     private static int roomCounter = 100;
 
     public static synchronized Room createRoom(String hostNickname) {
